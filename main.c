@@ -1,7 +1,9 @@
 // --------------------------------------------------------------
 // main.c
-// Trabajo "Proyecciones 3D" - Paso:
-//   Ventana + proyección ortográfica + UN cubo 3D dibujado.
+// Trabajo "Proyecciones 3D" - Paso 2
+//   - Ventana con 4 viewports (cuatro subventanas).
+//   - En los 4 se dibuja el MISMO cubo con proyección ortográfica.
+//   - Ojo fijo en (0,0,0), sin gluLookAt().
 // --------------------------------------------------------------
 
 #include <stdio.h>     // Funciones estándar de C (printf, etc.).
@@ -12,53 +14,49 @@ int window_width  = 800;
 int window_height = 600;
 
 // --------------------------------------------------------------
-// Función auxiliar: dibuja un cubo centrado en el origen.
-//
-// Definimos un cubo de lado 2, que va de -1 a +1 en cada eje.
-// Cada cara tendrá un color distinto para que se aprecie mejor
-// la orientación del cubo.
+// Dibuja un cubo centrado en el origen, de lado 2 (-1 a +1).
+// Cada cara tiene un color distinto.
 // --------------------------------------------------------------
 void drawCube(void)
 {
-    // Comenzamos a dibujar usando QUADS (cuadriláteros).
     glBegin(GL_QUADS);
 
-    // ------- Cara frontal (Z positiva) -------
+    // Cara frontal (Z positiva)
     glColor3f(1.0f, 0.0f, 0.0f);     // Rojo
     glVertex3f(-1.0f, -1.0f,  1.0f);
     glVertex3f( 1.0f, -1.0f,  1.0f);
     glVertex3f( 1.0f,  1.0f,  1.0f);
     glVertex3f(-1.0f,  1.0f,  1.0f);
 
-    // ------- Cara trasera (Z negativa) -------
+    // Cara trasera (Z negativa)
     glColor3f(0.0f, 1.0f, 0.0f);     // Verde
     glVertex3f(-1.0f, -1.0f, -1.0f);
     glVertex3f(-1.0f,  1.0f, -1.0f);
     glVertex3f( 1.0f,  1.0f, -1.0f);
     glVertex3f( 1.0f, -1.0f, -1.0f);
 
-    // ------- Cara izquierda (X negativa) -------
+    // Cara izquierda (X negativa)
     glColor3f(0.0f, 0.0f, 1.0f);     // Azul
     glVertex3f(-1.0f, -1.0f, -1.0f);
     glVertex3f(-1.0f, -1.0f,  1.0f);
     glVertex3f(-1.0f,  1.0f,  1.0f);
     glVertex3f(-1.0f,  1.0f, -1.0f);
 
-    // ------- Cara derecha (X positiva) -------
+    // Cara derecha (X positiva)
     glColor3f(1.0f, 1.0f, 0.0f);     // Amarillo
     glVertex3f( 1.0f, -1.0f, -1.0f);
     glVertex3f( 1.0f,  1.0f, -1.0f);
     glVertex3f( 1.0f,  1.0f,  1.0f);
     glVertex3f( 1.0f, -1.0f,  1.0f);
 
-    // ------- Cara superior (Y positiva) -------
+    // Cara superior (Y positiva)
     glColor3f(1.0f, 0.0f, 1.0f);     // Magenta
     glVertex3f(-1.0f,  1.0f, -1.0f);
     glVertex3f(-1.0f,  1.0f,  1.0f);
     glVertex3f( 1.0f,  1.0f,  1.0f);
     glVertex3f( 1.0f,  1.0f, -1.0f);
 
-    // ------- Cara inferior (Y negativa) -------
+    // Cara inferior (Y negativa)
     glColor3f(0.0f, 1.0f, 1.0f);     // Cian
     glVertex3f(-1.0f, -1.0f, -1.0f);
     glVertex3f( 1.0f, -1.0f, -1.0f);
@@ -69,85 +67,106 @@ void drawCube(void)
 }
 
 // --------------------------------------------------------------
-// Función reshape: ya estaba antes, no cambia.
-// Ajusta viewport y proyección ortográfica cuando cambia el tamaño.
+// Configura PROYECCIÓN ORTOGRÁFICA y dibuja el cubo en el
+// viewport ACTUAL. Se llama una vez por viewport.
 // --------------------------------------------------------------
-void reshape(int w, int h)
+void setupOrthoAndDrawCube(void)
 {
-    window_width  = (w > 0) ? w : 1;
-    window_height = (h > 0) ? h : 1;
-
-    glViewport(0, 0, window_width, window_height);
-
+    // Proyección
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-
     glOrtho(-2.0, 2.0,   // left, right
             -2.0, 2.0,   // bottom, top
             -10.0, 10.0  // near, far
     );
 
+    // Modelo-vista
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
+    glTranslatef(0.0f, 0.0f, -5.0f);
+    glRotatef(25.0f, 1.0f, 0.0f, 0.0f);
+    glRotatef(35.0f, 0.0f, 1.0f, 0.0f);
+
+    drawCube();
 }
 
 // --------------------------------------------------------------
-// Función de dibujo (display).
-// Ahora:
-//   1) Limpia los buffers.
-//   2) Coloca el cubo a una distancia razonable.
-//   3) Lo rota un poco para ver varias caras.
-//   4) Llama a drawCube().
+// reshape: guarda el tamaño nuevo de ventana.
+// La división en 4 viewports se hace en display().
+// --------------------------------------------------------------
+void reshape(int w, int h)
+{
+    window_width  = (w > 0) ? w : 1;
+    window_height = (h > 0) ? h : 1;
+    glViewport(0, 0, window_width, window_height);
+}
+
+// --------------------------------------------------------------
+// display: limpia, calcula 4 viewports y dibuja el cubo en cada uno.
 // --------------------------------------------------------------
 void display(void)
 {
-    // 1) Limpiar buffers de color y profundidad.
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    // 2) Asegurarnos de partir de una matriz de modelo-vista "limpia".
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
+    int half_w = window_width  / 2;
+    int half_h = window_height / 2;
 
-    // 3) Trasladar el cubo hacia Z negativa.
-    //    Recordemos:
-    //      - El "ojo" está en (0,0,0) mirando hacia -Z.
-    //      - Si el cubo estuviera en Z=0, estaría "encima" del ojo.
-    //    Lo movemos, por ejemplo, a Z = -5.
-    glTranslatef(0.0f, 0.0f, -5.0f);
+    // Viewport 1: arriba-izquierda
+    glViewport(0, half_h, half_w, half_h);
+    setupOrthoAndDrawCube();
 
-    // 4) Rotar un poco el cubo para que se vean varias caras.
-    //    Probamos con 25 grados en X y 35 en Y.
-    glRotatef(25.0f, 1.0f, 0.0f, 0.0f);   // Rotar 25° alrededor del eje X
-    glRotatef(35.0f, 0.0f, 1.0f, 0.0f);   // Luego 35° alrededor del eje Y
+    // Viewport 2: arriba-derecha
+    glViewport(half_w, half_h, half_w, half_h);
+    setupOrthoAndDrawCube();
 
-    // 5) Dibujar el cubo ya transformado.
-    drawCube();
+    // Viewport 3: abajo-izquierda
+    glViewport(0, 0, half_w, half_h);
+    setupOrthoAndDrawCube();
 
-    // 6) Enviar comandos a la GPU.
+    // Viewport 4: abajo-derecha
+    glViewport(half_w, 0, half_w, half_h);
+    setupOrthoAndDrawCube();
+
     glFlush();
 }
 
-// --------------------------------------------------------------
-// Función principal.
+/// --------------------------------------------------------------
+// main
 // --------------------------------------------------------------
 int main(int argc, char **argv)
 {
-    printf("Iniciando programa Proyecciones 3D...\n");
+    // Mensaje en la consola para saber qué versión estamos ejecutando.
+    printf("Iniciando programa Proyecciones 3D - Paso 2 (4 viewports ortográficos)...\n");
 
+    // Inicializar GLUT / FreeGLUT.
     glutInit(&argc, argv);
+
+    // Modo de visualización:
+    //  - GLUT_SINGLE: un buffer (no hay animación).
+    //  - GLUT_RGB: colores RGB.
+    //  - GLUT_DEPTH: activar buffer de profundidad (necesario en 3D).
     glutInitDisplayMode(GLUT_SINGLE | GLUT_RGB | GLUT_DEPTH);
+
+    // Tamaño y posición inicial de la ventana.
     glutInitWindowSize(window_width, window_height);
     glutInitWindowPosition(100, 100);
-    glutCreateWindow("Proyecciones 3D - Cubo simple");
 
+    // Crear la ventana con un título descriptivo.
+    glutCreateWindow("Proyecciones 3D - Paso 2 (4 viewports ortográficos)");
+
+    // Color de fondo (negro opaco).
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+
+    // Activar test de profundidad para ocultar caras traseras del cubo.
     glEnable(GL_DEPTH_TEST);
 
+    // Registrar funciones de callback.
     glutDisplayFunc(display);
     glutReshapeFunc(reshape);
 
+    // Entrar en el bucle principal de eventos de GLUT.
     glutMainLoop();
+
+    // Nunca se llega aquí normalmente, pero por estilo devolvemos 0.
     return 0;
 }
-
-
