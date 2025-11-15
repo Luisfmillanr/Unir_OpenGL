@@ -1,9 +1,12 @@
 // --------------------------------------------------------------
 // main.c
-// Trabajo "Proyecciones 3D" - Paso 2
-//   - Ventana con 4 viewports (cuatro subventanas).
-//   - En los 4 se dibuja el MISMO cubo con proyección ortográfica.
-//   - Ojo fijo en (0,0,0), sin gluLookAt().
+// Trabajo "Proyecciones 3D"
+//   Ventana con 4 viewports mostrando el MISMO cubo con:
+//   1) Proyección ortogonal.
+//   2) Proyección gabinete (oblicua paralela).
+//   3) Proyección perspectiva simétrica.
+//   4) Proyección perspectiva oblicua.
+// Restricción: el "ojo" permanece en (0,0,0), sin gluLookAt().
 // --------------------------------------------------------------
 
 #include <stdio.h>     // Funciones estándar de C (printf, etc.).
@@ -15,7 +18,7 @@ int window_height = 600;
 
 // --------------------------------------------------------------
 // Dibuja un cubo centrado en el origen, de lado 2 (-1 a +1).
-// Cada cara tiene un color distinto.
+// Cada cara tiene un color distinto para apreciar la orientación.
 // --------------------------------------------------------------
 void drawCube(void)
 {
@@ -67,42 +70,146 @@ void drawCube(void)
 }
 
 // --------------------------------------------------------------
-// Configura PROYECCIÓN ORTOGRÁFICA y dibuja el cubo en el
-// viewport ACTUAL. Se llama una vez por viewport.
+// Configura la MATRIZ MODELO-VISTA común para TODAS las vistas.
+// Aquí "movemos el objeto", NO la cámara:
+//   - Ponemos el cubo a Z = -5.
+//   - Lo rotamos un poco para ver varias caras.
 // --------------------------------------------------------------
-void setupOrthoAndDrawCube(void)
+void setupModelViewCommon(void)
 {
-    // Proyección
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+
+    // Trasladar el cubo hacia Z negativa.
+    glTranslatef(0.0f, 0.0f, -5.0f);
+
+    // Rotar un poco el cubo.
+    glRotatef(25.0f, 1.0f, 0.0f, 0.0f);   // 25° en X
+    glRotatef(35.0f, 0.0f, 1.0f, 0.0f);   // 35° en Y
+}
+
+// --------------------------------------------------------------
+// 1) Proyección ORTOGRÁFICA (viewport 1).
+//    Las líneas paralelas siguen paralelas, sin perspectiva.
+// --------------------------------------------------------------
+void renderOrtho(void)
+{
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
+
     glOrtho(-2.0, 2.0,   // left, right
             -2.0, 2.0,   // bottom, top
             -10.0, 10.0  // near, far
     );
 
-    // Modelo-vista
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
-    glTranslatef(0.0f, 0.0f, -5.0f);
-    glRotatef(25.0f, 1.0f, 0.0f, 0.0f);
-    glRotatef(35.0f, 0.0f, 1.0f, 0.0f);
-
+    setupModelViewCommon();
     drawCube();
 }
 
 // --------------------------------------------------------------
-// reshape: guarda el tamaño nuevo de ventana.
+// 2) Proyección GABINETE (viewport 2).
+//    Es una proyección oblicua paralela:
+//      - Partimos de una ortográfica.
+//      - Aplicamos una matriz de "shear" (cizalla) en X según Z.
+//    Aproximación sencilla: x' = x + 0.5 * z
+// --------------------------------------------------------------
+void renderCabinet(void)
+{
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+
+    // Base ortográfica.
+    glOrtho(-2.0, 2.0,   // left, right
+            -2.0, 2.0,   // bottom, top
+            -10.0, 10.0  // near, far
+    );
+
+    // Matriz de shear en X respecto a Z:
+    //   | 1   0   k   0 |
+    //   | 0   1   0   0 |
+    //   | 0   0   1   0 |
+    //   | 0   0   0   1 |
+    // En OpenGL (column-major) se define así:
+    GLfloat k = 0.5f;  // factor de "cabinet" (mitad de la profundidad)
+    GLfloat shearMat[16] = {
+        1.0f, 0.0f, 0.0f, 0.0f,   // Columna 0
+        0.0f, 1.0f, 0.0f, 0.0f,   // Columna 1
+        k,    0.0f, 1.0f, 0.0f,   // Columna 2 (afecta X con Z)
+        0.0f, 0.0f, 0.0f, 1.0f    // Columna 3
+    };
+
+    glMultMatrixf(shearMat);
+
+    setupModelViewCommon();
+    drawCube();
+}
+
+// --------------------------------------------------------------
+// 3) Proyección PERSPECTIVA SIMÉTRICA (viewport 3).
+//    Es la perspectiva "normal": frustum centrado, un punto de
+//    fuga en el centro, tamaño depende de la distancia.
+//    Usamos gluPerspective(fovY, aspect, near, far).
+// --------------------------------------------------------------
+void renderPerspectiveSymmetric(float aspect)
+{
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+
+    // Campo de visión vertical de 60 grados,
+    // aspecto = ancho/alto del viewport, near/far típicos.
+    gluPerspective(60.0, aspect, 1.0, 20.0);
+
+    setupModelViewCommon();
+    drawCube();
+}
+
+// --------------------------------------------------------------
+// 4) Proyección PERSPECTIVA OBLICUA (viewport 4).
+//    Partimos de una perspectiva simétrica y le aplicamos un
+//    "shear" suave en X para inclinar la dirección de visión.
+//    Esto produce una perspectiva con punto de fuga "descentrado".
+// --------------------------------------------------------------
+void renderPerspectiveOblique(float aspect)
+{
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+
+    // Perspectiva base.
+    gluPerspective(60.0, aspect, 1.0, 20.0);
+
+    // Shear suave en X según Z (similar idea a gabinete, pero
+    // aplicado encima de la perspectiva).
+    GLfloat k = 0.3f;  // menor que 0.5 para no distorsionar tanto
+    GLfloat shearMat[16] = {
+        1.0f, 0.0f, 0.0f, 0.0f,   // Columna 0
+        0.0f, 1.0f, 0.0f, 0.0f,   // Columna 1
+        k,    0.0f, 1.0f, 0.0f,   // Columna 2
+        0.0f, 0.0f, 0.0f, 1.0f    // Columna 3
+    };
+
+    glMultMatrixf(shearMat);
+
+    setupModelViewCommon();
+    drawCube();
+}
+
+// --------------------------------------------------------------
+// reshape: guarda el nuevo tamaño de la ventana.
 // La división en 4 viewports se hace en display().
 // --------------------------------------------------------------
 void reshape(int w, int h)
 {
     window_width  = (w > 0) ? w : 1;
     window_height = (h > 0) ? h : 1;
+
     glViewport(0, 0, window_width, window_height);
 }
 
 // --------------------------------------------------------------
-// display: limpia, calcula 4 viewports y dibuja el cubo en cada uno.
+// display:
+//   - Limpia buffers.
+//   - Calcula 4 viewports (2x2).
+//   - En cada uno aplica una proyección distinta.
 // --------------------------------------------------------------
 void display(void)
 {
@@ -111,62 +218,48 @@ void display(void)
     int half_w = window_width  / 2;
     int half_h = window_height / 2;
 
-    // Viewport 1: arriba-izquierda
+    // Todos los viewports tienen el mismo aspecto:
+    float aspect = (half_h > 0) ? ( (float)half_w / (float)half_h ) : 1.0f;
+
+    // 1) Arriba-izquierda: ORTOGRÁFICA
     glViewport(0, half_h, half_w, half_h);
-    setupOrthoAndDrawCube();
+    renderOrtho();
 
-    // Viewport 2: arriba-derecha
+    // 2) Arriba-derecha: GABINETE
     glViewport(half_w, half_h, half_w, half_h);
-    setupOrthoAndDrawCube();
+    renderCabinet();
 
-    // Viewport 3: abajo-izquierda
+    // 3) Abajo-izquierda: PERSPECTIVA SIMÉTRICA
     glViewport(0, 0, half_w, half_h);
-    setupOrthoAndDrawCube();
+    renderPerspectiveSymmetric(aspect);
 
-    // Viewport 4: abajo-derecha
+    // 4) Abajo-derecha: PERSPECTIVA OBLICUA
     glViewport(half_w, 0, half_w, half_h);
-    setupOrthoAndDrawCube();
+    renderPerspectiveOblique(aspect);
 
     glFlush();
 }
 
-/// --------------------------------------------------------------
+// --------------------------------------------------------------
 // main
 // --------------------------------------------------------------
 int main(int argc, char **argv)
 {
-    // Mensaje en la consola para saber qué versión estamos ejecutando.
-    printf("Iniciando programa Proyecciones 3D - Paso 2 (4 viewports ortográficos)...\n");
+    printf("Iniciando programa Proyecciones 3D - 4 tipos de proyección...\n");
 
-    // Inicializar GLUT / FreeGLUT.
     glutInit(&argc, argv);
-
-    // Modo de visualización:
-    //  - GLUT_SINGLE: un buffer (no hay animación).
-    //  - GLUT_RGB: colores RGB.
-    //  - GLUT_DEPTH: activar buffer de profundidad (necesario en 3D).
     glutInitDisplayMode(GLUT_SINGLE | GLUT_RGB | GLUT_DEPTH);
-
-    // Tamaño y posición inicial de la ventana.
     glutInitWindowSize(window_width, window_height);
     glutInitWindowPosition(100, 100);
 
-    // Crear la ventana con un título descriptivo.
-    glutCreateWindow("Proyecciones 3D - Paso 2 (4 viewports ortográficos)");
+    glutCreateWindow("Proyecciones 3D - Orto, Gabinete, Persp. Simétrica y Oblicua");
 
-    // Color de fondo (negro opaco).
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-
-    // Activar test de profundidad para ocultar caras traseras del cubo.
     glEnable(GL_DEPTH_TEST);
 
-    // Registrar funciones de callback.
     glutDisplayFunc(display);
     glutReshapeFunc(reshape);
 
-    // Entrar en el bucle principal de eventos de GLUT.
     glutMainLoop();
-
-    // Nunca se llega aquí normalmente, pero por estilo devolvemos 0.
     return 0;
 }
